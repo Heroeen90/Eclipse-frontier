@@ -1,61 +1,71 @@
-# ============================================================
-# Eclipse Frontier - .gitignore
-# Godot 4.x
-# ============================================================
+# ===================================
+# Eclipse Frontier - Godot 4 .gitignore
+# ===================================
 
-# Godot 4+ specific ignores
+# Godot 4 specific
 .godot/
-.import/
-export.cfg
-export_presets.cfg.bak
-
-# Imported translations (automatically generated from CSV files)
-*.translation
-
-# Mono-specific ignores
-.mono/
-data_*/
-mono_crash.*.json
-
-# System / Editor files
-.DS_Store
-Thumbs.db
 *.tmp
-*.bak
-*.log
-*.swp
-*~
+*.import
 
-# Build output
+# Build outputs
 build/
-android/build/
-android/.gradle/
 *.apk
 *.aab
 *.exe
-*.pck
-*.zip
+*.x86_64
+*.arm64
 
-# Keystores (security - never commit signing keys)
-*.keystore
-*.jks
-!debug.keystore
+# Android build files
+android/
+!android/build.gradle
+!android/config.gradle
+
+# Editor temp files
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# User-specific settings
+*.user
+.env
+
+# Log files
+*.log
+logs/
+user://
 
 # IDE files
-.vscode/
 .idea/
-*.code-workspace
+.vscode/
+*.suo
+*.user
 
-# Codespaces / devcontainer cache
-.devcontainer/.cache/
-
-# OS generated files
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V8
+.Trashes
 ehthumbs.db
-Desktop.ini
+Thumbs.db
 
-# Node (in case any tooling scripts are added later)
-node_modules/
+# Test artifacts
+tests/reports/
+tests/coverage/
 
-# Environment files (never commit secrets)
-.env
-.env.local
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Asset imports cache
+.import/
+
+# Export templates
+export_templates/
+
+# Godot cache
+cache/
