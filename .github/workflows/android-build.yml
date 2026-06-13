@@ -1,102 +1,58 @@
-name: 🤖 Android Build - Eclipse Frontier
+name: Android Build
 
 on:
   push:
-    branches:
-      - main
-      - develop
-  pull_request:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
-env:
-  GODOT_VERSION: "4.2.2"
-  GODOT_RELEASE: "stable"
-  ANDROID_SDK_VERSION: "34"
-  PROJECT_NAME: "eclipse-frontier"
-  EXPORT_NAME: "Eclipse Frontier"
-
 jobs:
-  build-android:
-    name: 🏗️ Build Android APK
+  build:
     runs-on: ubuntu-22.04
-
+    
     steps:
-      - name: 📥 Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          lfs: false
-          submodules: false
 
-      - name: ☕ Setup Java JDK
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "17"
+          distribution: temurin
+          java-version: 17
 
-      - name: 📱 Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: ${{ env.ANDROID_SDK_VERSION }}
-          build-tools-version: "34.0.0"
-          ndk-version: "23.2.8568313"
-
-      - name: 🔧 Install Android NDK
+      - name: Install Dependencies
         run: |
-          echo "Installing Android NDK..."
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;23.2.8568313"
-          echo "NDK installed successfully"
+          sudo apt-get update -qq
+          sudo apt-get install -y wget unzip
 
-      - name: 📦 Cache Godot
-        uses: actions/cache@v4
-        id: cache-godot
-        with:
-          path: |
-            /usr/local/bin/godot
-            ~/.local/share/godot
-          key: godot-${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}-linux
-
-      - name: ⬇️ Download Godot Engine
-        if: steps.cache-godot.outputs.cache-hit != 'true'
+      - name: Download Godot
         run: |
-          echo "Downloading Godot ${{ env.GODOT_VERSION }}..."
-          
-          GODOT_FILENAME="Godot_v${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}_linux.x86_64"
-          GODOT_URL="https://github.com/godotengine/godot/releases/download/${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}/${GODOT_FILENAME}.zip"
-          
-          wget -q "$GODOT_URL" -O godot.zip
+          wget -q "https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip" -O godot.zip
           unzip -q godot.zip
-          mv "$GODOT_FILENAME" /usr/local/bin/godot
-          chmod +x /usr/local/bin/godot
-          
-          echo "Godot downloaded and installed successfully"
-          godot --version
+          mv Godot_v4.2.2-stable_linux.x86_64 godot
+          chmod +x godot
+          echo "$(pwd)" >> $GITHUB_PATH
 
-      - name: ⬇️ Download Godot Export Templates
-        if: steps.cache-godot.outputs.cache-hit != 'true'
+      - name: Download Export Templates
         run: |
-          echo "Downloading Godot export templates..."
-          
-          TEMPLATES_FILENAME="Godot_v${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}_export_templates.tpz"
-          TEMPLATES_URL="https://github.com/godotengine/godot/releases/download/${{ env.GODOT_VERSION }}-${{ env.GODOT_RELEASE }}/${TEMPLATES_FILENAME}"
-          
-          wget -q "$TEMPLATES_URL" -O templates.tpz
-          
-          mkdir -p ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_RELEASE }}
-          unzip -q templates.tpz -d /tmp/templates
-          
-          mv /tmp/templates/templates/* ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_RELEASE }}/
-          
-          echo "Export templates installed successfully"
-          ls ~/.local/share/godot/export_templates/
+          mkdir -p ~/.local/share/godot/export_templates/4.2.2.stable
+          wget -q "https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz" -O templates.tpz
+          unzip -q templates.tpz -d /tmp/
+          mv /tmp/templates/* ~/.local/share/godot/export_templates/4.2.2.stable/
+          echo "Templates installed:"
+          ls ~/.local/share/godot/export_templates/4.2.2.stable/ | head -5
 
-      - name: 🔑 Setup Debug Keystore
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
         run: |
-          echo "Setting up debug keystore..."
-          
+          sdkmanager "ndk;23.2.8568313"
+          echo "NDK_ROOT=$ANDROID_HOME/ndk/23.2.8568313" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/23.2.8568313" >> $GITHUB_ENV
+
+      - name: Create Debug Keystore
+        run: |
           mkdir -p android
-          
           keytool -genkey -v \
             -keystore android/debug.keystore \
             -alias androiddebugkey \
@@ -105,126 +61,52 @@ jobs:
             -validity 10000 \
             -storepass android \
             -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US"
-          
-          echo "Debug keystore created successfully"
+            -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null
+          echo "Keystore created"
 
-      - name: 📂 Create Build Directory
+      - name: Setup Godot Android Config
         run: |
-          mkdir -p build
-          echo "Build directory created"
+          mkdir -p ~/.config/godot
+          cat > ~/.config/godot/editor_settings-4.tres << EOF
+          [gd_resource type="EditorSettings" format=3]
+          
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "/usr/lib/jvm/temurin-17-amd64"
+          EOF
+          echo "Godot config created"
 
-      - name: 🔄 Import Project
+      - name: Import Project
         run: |
-          echo "Importing Godot project..."
-          
-          timeout 120 godot \
-            --headless \
-            --path . \
-            --import \
-            --quit || true
-          
-          echo "Project import completed"
+          ./godot --headless --path . --import --quit 2>&1 || true
+          echo "Import done"
+          sleep 5
 
-      - name: 📱 Export Android APK (Debug)
+      - name: Create Build Dir
+        run: mkdir -p build
+
+      - name: Build APK
         run: |
-          echo "Building Android Debug APK..."
-          
-          godot \
-            --headless \
-            --path . \
+          ./godot --headless --path . \
             --export-debug "Android" \
-            "build/${{ env.PROJECT_NAME }}-debug.apk" \
-            --quit
-          
-          echo "Debug APK build completed"
+            "build/eclipse-frontier.apk" 2>&1
+          echo "Build completed"
 
-      - name: 📱 Export Android APK (Release)
+      - name: Check APK
         run: |
-          echo "Building Android Release APK..."
-          
-          godot \
-            --headless \
-            --path . \
-            --export-release "Android" \
-            "build/${{ env.PROJECT_NAME }}-release.apk" \
-            --quit
-          
-          echo "Release APK build completed"
-
-      - name: ✅ Verify APK Files
-        run: |
-          echo "=== Verifying APK files ==="
-          
-          if [ -f "build/${{ env.PROJECT_NAME }}-debug.apk" ]; then
-            DEBUG_SIZE=$(du -sh "build/${{ env.PROJECT_NAME }}-debug.apk" | cut -f1)
-            echo "✅ Debug APK: $DEBUG_SIZE"
+          if [ -f "build/eclipse-frontier.apk" ]; then
+            SIZE=$(du -sh build/eclipse-frontier.apk | cut -f1)
+            echo "APK created successfully: $SIZE"
           else
-            echo "❌ Debug APK not found!"
+            echo "APK not found, checking build folder:"
+            ls -la build/ || echo "Build folder empty"
             exit 1
           fi
-          
-          if [ -f "build/${{ env.PROJECT_NAME }}-release.apk" ]; then
-            RELEASE_SIZE=$(du -sh "build/${{ env.PROJECT_NAME }}-release.apk" | cut -f1)
-            echo "✅ Release APK: $RELEASE_SIZE"
-          else
-            echo "⚠️ Release APK not found (may be expected for unsigned builds)"
-          fi
-          
-          echo ""
-          echo "=== Build Directory Contents ==="
-          ls -lh build/
 
-      - name: 📤 Upload Debug APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: eclipse-frontier-debug-apk
-          path: build/${{ env.PROJECT_NAME }}-debug.apk
-          retention-days: 30
+          name: eclipse-frontier-apk
+          path: build/eclipse-frontier.apk
           if-no-files-found: error
-
-      - name: 📤 Upload Release APK
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: eclipse-frontier-release-apk
-          path: build/${{ env.PROJECT_NAME }}-release.apk
           retention-days: 30
-          if-no-files-found: warn
-
-      - name: 📋 Show Build Logs
-        if: always()
-        run: |
-          echo "=== Build Information ==="
-          echo "Godot Version: ${{ env.GODOT_VERSION }}"
-          echo "Android SDK: ${{ env.ANDROID_SDK_VERSION }}"
-          echo "Build Time: $(date)"
-          echo "Commit SHA: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref_name }}"
-          echo ""
-          echo "=== Environment ==="
-          java -version
-          echo "Android SDK: $ANDROID_HOME"
-
-      - name: 🎉 Build Summary
-        if: success()
-        run: |
-          echo "================================="
-          echo "✅ BUILD SUCCESSFUL!"
-          echo "================================="
-          echo "Project: ${{ env.EXPORT_NAME }}"
-          echo "Version: 0.1.0"
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Commit: ${{ github.sha }}"
-          echo ""
-          echo "APK files are available in Artifacts section"
-          echo "================================="
-
-      - name: ❌ Build Failed
-        if: failure()
-        run: |
-          echo "================================="
-          echo "❌ BUILD FAILED!"
-          echo "================================="
-          echo "Please check the logs above for errors"
-          echo "================================="
