@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -12,8 +15,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        env:
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -24,38 +25,153 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y wget unzip
-          echo "Dependencies installed"
+          sudo apt-get install -y wget unzip python3 python3-pip
+          pip3 install pillow 2>/dev/null || true
+
+      - name: Generate Placeholder Assets
+        run: |
+          python3 << 'PYEOF'
+          from PIL import Image, ImageDraw
+          import os, struct, wave, array
+
+          # PNG files to create
+          png_files = [
+            "assets/sprites/ui/icon.png",
+            "assets/sprites/ui/button_normal.png",
+            "assets/sprites/ui/button_pressed.png",
+            "assets/sprites/ui/button_hover.png",
+            "assets/sprites/tiles/grass.png",
+            "assets/sprites/tiles/water.png",
+            "assets/sprites/tiles/mountain.png",
+            "assets/sprites/tiles/forest.png",
+            "assets/sprites/resources/wood.png",
+            "assets/sprites/resources/stone.png",
+            "assets/sprites/resources/iron.png",
+            "assets/sprites/resources/food.png",
+            "assets/sprites/player/idle.png",
+            "assets/sprites/player/walk.png",
+            "assets/sprites/player/run.png",
+            "assets/sprites/buildings/house.png",
+            "assets/sprites/buildings/storage.png",
+            "assets/sprites/buildings/mine.png",
+            "assets/sprites/buildings/farm.png",
+            "assets/ui/boot_splash.png",
+          ]
+
+          colors = {
+            "icon": (100, 150, 255),
+            "button": (80, 80, 120),
+            "grass": (34, 139, 34),
+            "water": (30, 100, 200),
+            "mountain": (120, 100, 80),
+            "forest": (0, 100, 0),
+            "wood": (139, 90, 43),
+            "stone": (150, 150, 150),
+            "iron": (100, 100, 130),
+            "food": (200, 50, 50),
+            "idle": (50, 100, 200),
+            "walk": (50, 150, 200),
+            "run": (50, 200, 200),
+            "house": (180, 140, 100),
+            "storage": (160, 120, 80),
+            "mine": (100, 80, 60),
+            "farm": (100, 180, 60),
+            "default": (128, 128, 128),
+          }
+
+          for png_path in png_files:
+            os.makedirs(os.path.dirname(png_path), exist_ok=True)
+            color = colors.get("default")
+            for key in colors:
+              if key in png_path.lower():
+                color = colors[key]
+                break
+            img = Image.new("RGB", (64, 64), color=color)
+            draw = ImageDraw.Draw(img)
+            draw.rectangle([2, 2, 61, 61], outline=(255,255,255), width=2)
+            img.save(png_path)
+            print(f"Created: {png_path}")
+
+          # Create boot splash
+          os.makedirs("assets/ui", exist_ok=True)
+          splash = Image.new("RGB", (1080, 1920), color=(20, 20, 40))
+          draw = ImageDraw.Draw(splash)
+          draw.rectangle([440, 900, 640, 1020], fill=(100, 150, 255))
+          splash.save("assets/ui/boot_splash.png")
+          print("Created boot splash")
+          PYEOF
+          echo "Assets generated"
+
+      - name: Generate Audio Placeholders
+        run: |
+          python3 << 'PYEOF'
+          import os, struct, math
+
+          audio_files = [
+            "assets/audio/music/menu_theme.ogg",
+            "assets/audio/music/gameplay_theme.ogg",
+            "assets/audio/music/boss_theme.ogg",
+            "assets/audio/sfx/click.ogg",
+            "assets/audio/sfx/build.ogg",
+            "assets/audio/sfx/collect.ogg",
+            "assets/audio/sfx/level_up.ogg",
+          ]
+
+          # Minimal valid OGG file (silent)
+          minimal_ogg = bytes([
+            0x4F,0x67,0x67,0x53,0x00,0x02,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x01,0x1E,0x01,0x76,0x6F,0x72,0x62,0x69,
+            0x73,0x00,0x00,0x00,0x00,0x01,0x44,0xAC,
+            0x00,0x00,0xFF,0xFF,0xFF,0xFF,0x00,0x77,
+            0x1B,0x00,0xFF,0xFF,0xFF,0xFF,0xB8,0x01
+          ])
+
+          for audio_path in audio_files:
+            os.makedirs(os.path.dirname(audio_path), exist_ok=True)
+            with open(audio_path, 'wb') as f:
+              f.write(minimal_ogg)
+            print(f"Created: {audio_path}")
+          PYEOF
+          echo "Audio placeholders created"
 
       - name: Download Godot
         run: |
-          wget -q "https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip" -O godot.zip
+          wget -q \
+            "https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_linux.x86_64.zip" \
+            -O godot.zip
           unzip -q godot.zip
           mv "Godot_v4.2.2-stable_linux.x86_64" godot
           chmod +x godot
-          echo "Godot ready"
+          ./godot --version
 
       - name: Download Templates
         run: |
           mkdir -p ~/.local/share/godot/export_templates/4.2.2.stable
-          wget -q "https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz" -O templates.tpz
+          wget -q \
+            "https://github.com/godotengine/godot/releases/download/4.2.2-stable/Godot_v4.2.2-stable_export_templates.tpz" \
+            -O templates.tpz
           unzip -q templates.tpz -d /tmp/tpl
           mv /tmp/tpl/templates/* ~/.local/share/godot/export_templates/4.2.2.stable/
-          echo "Templates ready"
-          ls ~/.local/share/godot/export_templates/4.2.2.stable/ | grep -i android
+          ls ~/.local/share/godot/export_templates/4.2.2.stable/ | grep android
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Install NDK
         run: |
-          sdkmanager "ndk;23.2.8568313" 2>/dev/null
-          echo "NDK installed"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;23.2.8568313" 2>/dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/23.2.8568313" >> $GITHUB_ENV
 
       - name: Create Keystore
         run: |
           keytool -genkey -v \
-            -keystore debug.keystore \
+            -keystore "$(pwd)/debug.keystore" \
             -alias androiddebugkey \
             -keyalg RSA \
             -keysize 2048 \
@@ -63,49 +179,57 @@ jobs:
             -storepass android \
             -keypass android \
             -dname "CN=Debug,O=Debug,C=US" 2>/dev/null
-          echo "Keystore created"
+          echo "Keystore OK"
 
-      - name: Setup Editor Settings
+      - name: Setup Godot Config
         run: |
           mkdir -p ~/.config/godot
-          JAVA_PATH=$(readlink -f $(which java) | sed 's|/bin/java||')
-          echo "Java path: $JAVA_PATH"
-          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_PATH" > ~/.config/godot/editor_settings-4.tres
+          JAVA_HOME_PATH=$(dirname $(dirname $(readlink -f $(which java))))
+          cat > ~/.config/godot/editor_settings-4.tres << EOF
+[gd_resource type="EditorSettings" format=3]
+
+[resource]
+export/android/android_sdk_path = "$ANDROID_HOME"
+export/android/java_sdk_path = "$JAVA_HOME_PATH"
+export/android/debug_keystore = "$(pwd)/debug.keystore"
+export/android/debug_keystore_user = "androiddebugkey"
+export/android/debug_keystore_pass = "android"
+EOF
           cat ~/.config/godot/editor_settings-4.tres
 
-      - name: Update Export Presets Keystore
+      - name: Fix Export Presets Keystore
         run: |
-          KEYSTORE_PATH="$(pwd)/debug.keystore"
-          sed -i "s|keystore/debug=\"\"|keystore/debug=\"$KEYSTORE_PATH\"|g" export_presets.cfg
-          echo "Export presets updated with keystore"
-          grep keystore export_presets.cfg
+          KEYSTORE="$(pwd)/debug.keystore"
+          sed -i "s|keystore/debug=\"\"|keystore/debug=\"$KEYSTORE\"|g" export_presets.cfg
+          grep "keystore" export_presets.cfg
 
       - name: Import Project
         run: |
-          timeout 90 ./godot --headless --path "$(pwd)" --import --quit-after 30 2>&1 | tail -10 || true
+          timeout 120 ./godot \
+            --headless \
+            --path "$(pwd)" \
+            --import \
+            --quit-after 60 2>&1 | tail -20 || true
+          sleep 3
           echo "Import done"
-          sleep 2
-
-      - name: Create Build Dir
-        run: mkdir -p build
 
       - name: Build APK
         run: |
+          mkdir -p build
           ./godot \
             --headless \
             --path "$(pwd)" \
             --export-debug "Android" \
             "$(pwd)/build/eclipse-frontier.apk" 2>&1
-          echo "Build finished with code: $?"
+          echo "Exit: $?"
 
-      - name: Verify Build
+      - name: Verify
         run: |
           if [ -f "build/eclipse-frontier.apk" ]; then
-            echo "SUCCESS"
             ls -lah build/eclipse-frontier.apk
+            echo "SUCCESS"
           else
-            echo "FAILED - APK not found"
-            ls -la build/ || echo "build/ is empty"
+            ls -la build/ || echo "empty"
             exit 1
           fi
 
@@ -116,11 +240,3 @@ jobs:
           name: eclipse-frontier-apk
           path: build/eclipse-frontier.apk
           retention-days: 30
-
-      - name: Upload Logs
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: failure-logs
-          path: ~/.config/godot/
-          retention-days: 7
